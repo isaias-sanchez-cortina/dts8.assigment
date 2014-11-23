@@ -1,0 +1,68 @@
+---
+title: "DTS8.Assigment"
+author: "Isaias Sanchez-Cortina"
+date: "23 de noviembre de 2014"
+output: html_document
+---
+```{r}
+file.local="pml-training.csv"
+if (! file.exists(file.local)) {
+  file.remote<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(file.remote,file.local)
+}
+Train <- read.csv(file.local);
+
+
+file.local="pml-testing.csv"
+if (! file.exists(file.local)) {
+  file.remote<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(file.remote,file.local)
+}
+Test <- read.csv(file.local);
+```
+
+```{r}
+library(caret)
+# Remove predictors that have one unique value (i.e. are zero variance predictors)
+#  or predictors that are have both of the following characteristics: 
+#   they have very few unique values relative to the number of samples and
+#   the ratio of the frequency of the most common value to the frequency of
+#   the second most common value is large.
+removevars<-nearZeroVar(Train);
+Train<- Train[,- removevars]
+# vars with nans
+keepvars<-(complete.cases(t(Train)))
+Train<- Train[,keepvars]
+cat(sprintf("-- %d variables out of %d have been removed", 160-dim(Train)[2],160))
+
+# remove rows with unkown classes:
+
+cat(sprintf("-- %d variables out of %d have been removed", 19622-dim(Train)[1],19622))
+
+
+mytrain=Train;
+fitControl <- trainControl(method = "repeatedcv",   number = 5,  repeats = 1)
+
+f1<-train(classe ~ ., trControl = fitControl,
+      data = mytrain ,
+      method = "rpart",
+      iter = 9)
+f2<-train(classe ~ ., trControl = fitControl,
+      data = mytrain ,
+      method = "ORFlog" , mtry=5
+)
+```
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+mytest<-(Test[,-removevars])[,keepvars]
+
+res<-predict(f1,mytest) ; res; pml_write_files(res)
+```
