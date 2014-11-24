@@ -7,7 +7,18 @@ output: html_document
 
 ### Abstracts
 
+ This work tries to accurately precdit the actions of the user of accelerometers.
+In particular, we use the dataset obtained barbell liftings (http://groupware.les.inf.puc-rio.br/har).
+These activities where performed in different correct and incorrect different ways, five in total.
 
+  To do so, we will buid different machine learning algorithms. 
+In order to achieve generalization, the train will be partioned for cross validation,
+with one of the part left for testing. The resulting 4 models, will be used 
+to predict the left partition by voting.
+
+### Data analysis and dimensionality reduction
+
+First, we load the train and test:
 ```{r}
 file.local="pml-training.csv"
 if (! file.exists(file.local)) {
@@ -15,44 +26,73 @@ if (! file.exists(file.local)) {
   download.file(file.remote,file.local)
 }
 Train <- read.csv(file.local);
-
-
-file.local="pml-testing.csv"
-if (! file.exists(file.local)) {
-  file.remote<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
-  download.file(file.remote,file.local)
-}
-Test <- read.csv(file.local);
 ```
 
+The dimensionality of the data is quite high.  While extra dimension may add
+some information from the regression/classification point of view, an excess
+of dimensions make the machine learning [ML] algorithms computationaly impracticable.
+Thus, we should content with a lower dimensionality dataset. 
+For that purpose, we wil remove the colums (predictors) which:
+
+  - have one unique value (i.e. are zero variance predictors)
+  
+  - they have very few unique values relative to the number of samples and
+the ratio of the frequency of the most common value to the frequency of
+he second most common value is large.
+
 ```{r}
-library(caret)
-# Remove predictors that have one unique value (i.e. are zero variance predictors)
-#  or predictors that are have both of the following characteristics: 
-#   they have very few unique values relative to the number of samples and
-#   the ratio of the frequency of the most common value to the frequency of
-#   the second most common value is large.
+library(caret) # use the caret package for training
+
+# Remove predictors 
 removevars<-nearZeroVar(Train);
 mytrain<- Train[,- removevars]
-# vars with nans
+cat(sprintf("-- %d variables out of %d have been removed", 160-dim(Train)[2],160))
+```
+
+Additionally, we may remove any columns with missing data. 
+This is not a usual practice, but this will help in reducing the dimensionality;
+while the remaining column dimensionality will be high enough.
+Techniques such as SDV or PCA could have been applied instead.
+```{r}
+# Remove variables with nans
 keepvars<-(complete.cases(t(mytrain)))
 mytrain<- mytrain[,keepvars]
 cat(sprintf("-- %d variables out of %d have been removed", 160-dim(Train)[2],160))
-# remove rows with unkown classes:
-#cat(sprintf("-- %d variables out of %d have been removed", 19622-dim(Train)[1],19622))
+```
 
-fitControl <- trainControl(method = "repeatedcv",   number = 5,  repeats = 1)
+### Cross-validation
 
+  Cross-validation or other subpartitioning techinques may improve the classifiers performance.
+In our particular case, this is mandatory, since we do not dispose of a preset validation set. 
+For this cause, we will split the training randomly and in balanced manner for the class labels (classe). 4 of the resulting 5 partitions will be used for training 4 different models.
+At the end, the trained models will be used to predict the test. And then by votation
+the most voted label will be chosen as the final predicted label. This way we can 
+state not only a prediction, but also a confidence interval.
+
+```{r}
+  trainCV<-createFolds( mytrain$classe, k=5, list=TRUE)
+  myval<-mytrain[trainCV[[5]],];
+  mytrain.1=mytrain[c(trainCV[[1]],trainCV[[2]],trainCV[[3]]),];
+  mytrain.2=mytrain[c(trainCV[[2]],trainCV[[3]],trainCV[[4]]),];
+  mytrain.3=mytrain[c(trainCV[[1]],trainCV[[2]],trainCV[[4]]),];
+  mytrain.4=mytrain[c(trainCV[[1]],trainCV[[2]],trainCV[[4]]),];
+````
+
+ Now, let us build the machine learning algorithm
+```
+fitControl <- trainControl(method = "repeatedcv",   number = 3,  repeats = 1)
 f1<-train(classe ~ ., trControl = fitControl,
       data = mytrain ,
       method = "rpart", tuneLength = 9)
+
+
 #f2<-train(classe ~ ., trControl = fitControl,
 #      data = mytrain ,
 #      method = "ORFlog" , mtry=5
 #)
 ```
 
-```{r}
+```
 pml_write_files = function(x){
   n = length(x)
   for(i in 1:n){
@@ -63,7 +103,24 @@ pml_write_files = function(x){
 
 mytest<-(Test[,-removevars])[,keepvars]
 
-res<-predict(f1,mytest) ; res; 
+res<-predict(f2,mytest) ; res; 
 # write output
 #pml_write_files(res)
 ```
+
+### Results 
+Now we apply the build model for the external unlabeled test, submitted for competition.
+
+```
+file.local="pml-testing.csv"
+if (! file.exists(file.local)) {
+  file.remote<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(file.remote,file.local)
+}
+Test <- read.csv(file.local);
+mytest<-(Test[,-removevars])[,keepvars]
+
+res<-predict(f2,mytest) ; res; 
+
+```
+# D A A B B A D D A D A C A A A C A D D E

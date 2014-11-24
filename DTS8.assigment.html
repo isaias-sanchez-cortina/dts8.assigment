@@ -60,49 +60,59 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 
 <div id="abstracts" class="section level3">
 <h3>Abstracts</h3>
+<p>This work tries to accurately precdit the actions of the user of accelerometers. In particular, we use the dataset obtained barbell liftings (<a href="http://groupware.les.inf.puc-rio.br/har">http://groupware.les.inf.puc-rio.br/har</a>). These activities where performed in different correct and incorrect different ways, five in total.</p>
+<p>To do so, we will buid different machine learning algorithms. In order to achieve generalization, the train will be partioned for cross validation, with one of the part left for testing. The resulting 4 models, will be used to predict the left partition by voting.</p>
+</div>
+<div id="data-analysis-and-dimensionality-reduction" class="section level3">
+<h3>Data analysis and dimensionality reduction</h3>
+<p>First, we load the train and test:</p>
 <pre class="r"><code>file.local=&quot;pml-training.csv&quot;
 if (! file.exists(file.local)) {
   file.remote&lt;-&quot;http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;
   download.file(file.remote,file.local)
 }
-Train &lt;- read.csv(file.local);
-
-
-file.local=&quot;pml-testing.csv&quot;
-if (! file.exists(file.local)) {
-  file.remote&lt;-&quot;http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;
-  download.file(file.remote,file.local)
-}
-Test &lt;- read.csv(file.local);</code></pre>
-<pre class="r"><code>library(caret)</code></pre>
+Train &lt;- read.csv(file.local);</code></pre>
+<p>The dimensionality of the data is quite high. While extra dimension may add some information from the regression/classification point of view, an excess of dimensions make the machine learning [ML] algorithms computationaly impracticable. Thus, we should content with a lower dimensionality dataset. For that purpose, we wil remove the colums (predictors) which:</p>
+<ul>
+<li><p>have one unique value (i.e. are zero variance predictors)</p></li>
+<li><p>they have very few unique values relative to the number of samples and the ratio of the frequency of the most common value to the frequency of he second most common value is large.</p></li>
+</ul>
+<pre class="r"><code>library(caret) # use the caret package for training</code></pre>
 <pre><code>## Loading required package: lattice
 ## Loading required package: ggplot2</code></pre>
-<pre class="r"><code># Remove predictors that have one unique value (i.e. are zero variance predictors)
-#  or predictors that are have both of the following characteristics: 
-#   they have very few unique values relative to the number of samples and
-#   the ratio of the frequency of the most common value to the frequency of
-#   the second most common value is large.
+<pre class="r"><code># Remove predictors 
 removevars&lt;-nearZeroVar(Train);
 mytrain&lt;- Train[,- removevars]
-# vars with nans
+cat(sprintf(&quot;-- %d variables out of %d have been removed&quot;, 160-dim(Train)[2],160))</code></pre>
+<pre><code>## -- 0 variables out of 160 have been removed</code></pre>
+<p>Additionally, we may remove any columns with missing data. This is not a usual practice, but this will help in reducing the dimensionality; while the remaining column dimensionality will be high enough. Techniques such as SDV or PCA could have been applied instead.</p>
+<pre class="r"><code># Remove variables with nans
 keepvars&lt;-(complete.cases(t(mytrain)))
 mytrain&lt;- mytrain[,keepvars]
 cat(sprintf(&quot;-- %d variables out of %d have been removed&quot;, 160-dim(Train)[2],160))</code></pre>
 <pre><code>## -- 0 variables out of 160 have been removed</code></pre>
-<pre class="r"><code># remove rows with unkown classes:
-#cat(sprintf(&quot;-- %d variables out of %d have been removed&quot;, 19622-dim(Train)[1],19622))
-
-fitControl &lt;- trainControl(method = &quot;repeatedcv&quot;,   number = 5,  repeats = 1)
-
+</div>
+<div id="cross-validation" class="section level3">
+<h3>Cross-validation</h3>
+<p>Cross-validation or other subpartitioning techinques may improve the classifiers performance. In our particular case, this is mandatory, since we do not dispose of a preset validation set. For this cause, we will split the training randomly and in balanced manner for the class labels (classe). 4 of the resulting 5 partitions will be used for training 4 different models. At the end, the trained models will be used to predict the test. And then by votation the most voted label will be chosen as the final predicted label. This way we can state not only a prediction, but also a confidence interval.</p>
+<pre class="r"><code>  trainCV&lt;-createFolds( mytrain$classe, k=5, list=TRUE)
+  myval&lt;-mytrain[trainCV[[5]],];
+  mytrain.1=mytrain[c(trainCV[[1]],trainCV[[2]],trainCV[[3]]),];
+  mytrain.2=mytrain[c(trainCV[[2]],trainCV[[3]],trainCV[[4]]),];
+  mytrain.3=mytrain[c(trainCV[[1]],trainCV[[2]],trainCV[[4]]),];
+  mytrain.4=mytrain[c(trainCV[[1]],trainCV[[2]],trainCV[[4]]),];</code></pre>
+<p>Now, let us build the machine learning algorithm</p>
+<pre><code>fitControl &lt;- trainControl(method = &quot;repeatedcv&quot;,   number = 3,  repeats = 1)
 f1&lt;-train(classe ~ ., trControl = fitControl,
       data = mytrain ,
-      method = &quot;rpart&quot;, tuneLength = 9)</code></pre>
-<pre><code>## Loading required package: rpart</code></pre>
-<pre class="r"><code>#f2&lt;-train(classe ~ ., trControl = fitControl,
+      method = &quot;rpart&quot;, tuneLength = 9)
+
+
+#f2&lt;-train(classe ~ ., trControl = fitControl,
 #      data = mytrain ,
 #      method = &quot;ORFlog&quot; , mtry=5
 #)</code></pre>
-<pre class="r"><code>pml_write_files = function(x){
+<pre><code>pml_write_files = function(x){
   n = length(x)
   for(i in 1:n){
     filename = paste0(&quot;problem_id_&quot;,i,&quot;.txt&quot;)
@@ -112,11 +122,26 @@ f1&lt;-train(classe ~ ., trControl = fitControl,
 
 mytest&lt;-(Test[,-removevars])[,keepvars]
 
-res&lt;-predict(f1,mytest) ; res; </code></pre>
-<pre><code>##  [1] A A A A A A A A A A A A A A A A A A A A
-## Levels: A B C D E</code></pre>
-<pre class="r"><code># write output
+res&lt;-predict(f2,mytest) ; res; 
+# write output
 #pml_write_files(res)</code></pre>
+</div>
+<div id="results" class="section level3">
+<h3>Results</h3>
+<p>Now we apply the build model for the external unlabeled test, submitted for competition.</p>
+<pre><code>file.local=&quot;pml-testing.csv&quot;
+if (! file.exists(file.local)) {
+  file.remote&lt;-&quot;http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;
+  download.file(file.remote,file.local)
+}
+Test &lt;- read.csv(file.local);
+mytest&lt;-(Test[,-removevars])[,keepvars]
+
+res&lt;-predict(f2,mytest) ; res; 
+</code></pre>
+</div>
+<div id="d-a-a-b-b-a-d-d-a-d-a-c-a-a-a-c-a-d-d-e" class="section level1">
+<h1>D A A B B A D D A D A C A A A C A D D E</h1>
 </div>
 
 
